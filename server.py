@@ -11,7 +11,6 @@ from groq import Groq
 from groq.types.chat import ChatCompletionMessageParam
 from dotenv import load_dotenv
 
-import ollama
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
