@@ -5,14 +5,21 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
+from typing import Iterable, cast
 from uuid import UUID
+from groq import Groq
+from groq.types.chat import ChatCompletionMessageParam
+from dotenv import load_dotenv
 
 import ollama
 from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-MODEL = "llama3.2:1b"
+load_dotenv(Path(__file__).resolve().with_name(".env"))
+client = Groq()
+
+MODEL = "openai/gpt-oss-20b"
 RECENT_MESSAGES_TO_KEEP = 6
 SUMMARY_EVERY_TURNS = 5
 SAVE_CSV = True
@@ -97,12 +104,15 @@ def get_chat_response(request: ChatRequest):
     messages.append({"role": "user", "content": user_question})
 
     # Send it to Llama
-    response = ollama.chat(model=MODEL, messages=messages)
-    
-    input_tokens = safe_int(response.prompt_eval_count)
-    output_tokens = safe_int(response.eval_count)
-    genresponse = response.message.content
-    
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=cast(Iterable[ChatCompletionMessageParam], messages)
+    )
+
+    input_tokens = safe_int(response.usage.prompt_tokens if response.usage else None)
+    output_tokens = safe_int(response.usage.completion_tokens if response.usage else None)
+    genresponse = response.choices[0].message.content
+
     # Save the current turn to history
     track.append({"role": "user", "content": user_question})
     track.append({"role": "assistant", "content": genresponse})
@@ -121,7 +131,7 @@ def get_chat_response(request: ChatRequest):
         if len(track) > 1:
             old_messages = track[:-RECENT_MESSAGES_TO_KEEP]
 
-            sumresponse = ollama.chat(
+            sumresponse = client.chat.completions.create(
                 model=MODEL,
                 messages=[
                     {"role": "system", "content": SummaryInstructions},
@@ -135,9 +145,9 @@ def get_chat_response(request: ChatRequest):
                 ]
             )
 
-            summary = f"{summary} {sumresponse.message.content}"
-            summary_input = safe_int(sumresponse.prompt_eval_count)
-            summary_output = safe_int(sumresponse.eval_count)
+            summary = f"{summary} {sumresponse.choices[0].message.content}"
+            summary_input = safe_int(sumresponse.usage.prompt_tokens if sumresponse.usage else None)
+            summary_output = safe_int(sumresponse.usage.completion_tokens if sumresponse.usage else None)
 
             total_input_tokens += summary_input
             total_output_tokens += summary_output

@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import brainIcon from './assets/pngtree-ai-brain-icon-with-circuits-png-image_15855770.png';
 import './App.css';
 
+const API_BASE_URL = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '');
+
 interface Message {
   id: string;
   sender: 'user' | 'assistant';
@@ -101,7 +103,7 @@ export default function ChatInterface() {
     setIsSending(true);
 
     try {
-      const response = await fetch('/api/chat', {
+      const response = await fetch(`${API_BASE_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message, session_id: sessionId }),
@@ -195,7 +197,7 @@ export default function ChatInterface() {
     setRequestError('');
 
     try {
-      const response = await fetch('/api/restart', { method: 'POST' });
+      const response = await fetch(`${API_BASE_URL}/api/restart`, { method: 'POST' });
       if (!response.ok) {
         throw new Error(`The server returned ${response.status}.`);
       }
