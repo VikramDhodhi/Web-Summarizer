@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import brainIcon from './assets/pngtree-ai-brain-icon-with-circuits-png-image_15855770.png';
 import './App.css';
 
 const API_BASE_URL = import.meta.env.DEV ? '' : (import.meta.env.VITE_API_URL || '');
@@ -18,6 +17,46 @@ interface TokenUsage {
   session_input_tokens: number;
   session_output_tokens: number;
   session_total_tokens: number;
+}
+
+type IconName =
+  | 'chart'
+  | 'check'
+  | 'chevron'
+  | 'collapse'
+  | 'message'
+  | 'plus'
+  | 'refresh'
+  | 'search'
+  | 'send';
+
+function Icon({ name }: { name: IconName }) {
+  const paths: Record<IconName, React.ReactNode> = {
+    chart: <><path d="M4 19V9" /><path d="M10 19V5" /><path d="M16 19v-7" /><path d="M22 19H2" /></>,
+    check: <><path d="m5 12 4 4L19 6" /><circle cx="12" cy="12" r="9" /></>,
+    chevron: <path d="m7 10 5 5 5-5" />,
+    collapse: <><path d="M4 6h16M4 12h16M4 18h16" /><path d="m15 9 3 3-3 3" /></>,
+    message: <><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H6l-3 2v-6.5A7.5 7.5 0 1 1 20 11.5Z" /></>,
+    plus: <><path d="M12 5v14M5 12h14" /></>,
+    refresh: <><path d="M20 7v5h-5" /><path d="M19 12a7 7 0 1 1-2-5l3 5" /></>,
+    search: <><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4 4" /></>,
+    send: <><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></>,
+  };
+
+  return (
+    <svg
+      aria-hidden="true"
+      className="icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {paths[name]}
+    </svg>
+  );
 }
 
 function isTokenUsage(value: unknown): value is TokenUsage {
@@ -39,53 +78,86 @@ function isTokenUsage(value: unknown): value is TokenUsage {
   );
 }
 
-export function ChatComponent({ messages }: { messages: Message[] }) {
-  // 1. Create a reference holder for the <main> element
-  const chatMainRef = useRef<HTMLElement>(null);
-
-  // 2. Automatically scroll whenever the messages array updates
-  useEffect(() => {
-    if (chatMainRef.current) {
-      chatMainRef.current.scrollTop = chatMainRef.current.scrollHeight;
+function renderMessageText(text: string): React.ReactNode[] {
+  return text.split(/(\*\*[\s\S]+?\*\*)/g).map((part, index) => {
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      return <strong key={index}>{part.slice(2, -2)}</strong>;
     }
-  }, [messages]); // <-- This triggers the code every time a new message arrives
 
-  return (
-    /* 3. Link the ref to your HTML tag */
-    <main className="chat-main" ref={chatMainRef}>
-      {/* Your messages map loop goes here */}
-    </main>
-  );
+    return part;
+  });
 }
+
+const starterPrompts = [
+  'Summarize an article',
+  'Compare two papers',
+  'Tidy up my notes',
+];
+
+const TITLE_LENGTH = 35;
+const formatTokens = (tokens: number) => new Intl.NumberFormat('en-US').format(tokens);
 
 export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       sender: 'assistant',
-      text: 'Hello! How can I help you test your conversation model today?',
-      model: ""
+      text: 'Hey, what would you like to summarize?',
+      model: '',
     },
   ]);
-  const [input, setInput] = useState<string>('');
+  const [input, setInput] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [conversationSearch, setConversationSearch] = useState('');
   const [requestError, setRequestError] = useState('');
   const [restartError, setRestartError] = useState('');
-  const [model, setModel] = useState<string>('Loading…');
+  const [model, setModel] = useState('Loading…');
   const [usage, setUsage] = useState<TokenUsage | null>(null);
-  const [sessionId] = useState(() => crypto.randomUUID());
-  const [sessionTotalTokens, setSessionTotalTokens] = useState<number>(0);
+  const [conversationSummary, setConversationSummary] = useState('');
+  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
+  const [sessionTotalTokens, setSessionTotalTokens] = useState(0);
   const latestMessageRef = useRef<HTMLDivElement>(null);
 
+  const firstUserMessage = messages.find((message) => message.sender === 'user');
+  const conversationTitle = firstUserMessage
+    ? firstUserMessage.text.length > TITLE_LENGTH
+      ? `${firstUserMessage.text.slice(0, TITLE_LENGTH)}…`
+      : firstUserMessage.text
+    : 'New conversation';
+  const isConversationVisible = conversationTitle
+    .toLowerCase()
+    .includes(conversationSearch.trim().toLowerCase());
+  const sessionInputTokens = usage?.session_input_tokens ?? 0;
+  const sessionOutputTokens = usage?.session_output_tokens ?? 0;
+  const tokenSplit = sessionInputTokens + sessionOutputTokens;
+  const inputShare = tokenSplit ? (sessionInputTokens / tokenSplit) * 100 : 50;
 
   useEffect(() => {
-    latestMessageRef.current?.scrollIntoView({ block: 'end' });
+    latestMessageRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
   }, [messages]);
 
- 
-    
+  const handleNewConversation = () => {
+    if (isSending || isRestarting) return;
+
+    setMessages([
+      {
+        id: `${Date.now()}-welcome`,
+        sender: 'assistant',
+        text: 'Hey, what would you like to summarize?',
+      },
+    ]);
+    setInput('');
+    setSessionId(crypto.randomUUID());
+    setUsage(null);
+    setConversationSummary('');
+    setSessionTotalTokens(0);
+    setRequestError('');
+    setRestartError('');
+    setModel('Loading…');
+  };
 
   const handleSend = async () => {
     const message = input.trim();
@@ -114,13 +186,10 @@ export default function ChatInterface() {
         payload = JSON.parse(responseText);
       } catch {
         if (!response.ok) {
-          throw new Error(
-            responseText || `The server returned ${response.status}.`,
-          );
+          throw new Error(responseText || `The server returned ${response.status}.`);
         }
         throw new Error('The server returned an invalid response.');
       }
-      console.log("Payload JSON:", JSON.stringify(payload, null, 2));
 
       if (!response.ok) {
         const detail =
@@ -133,7 +202,7 @@ export default function ChatInterface() {
         throw new Error(detail);
       }
       if (typeof payload !== 'object' || payload === null || !('reply' in payload)) {
-        throw new Error(`Missing "reply".`);
+        throw new Error('Missing "reply".');
       }
 
       const reply = payload.reply;
@@ -141,13 +210,14 @@ export default function ChatInterface() {
         throw new Error(`"reply" should be a string, received: ${typeof reply}`);
       }
 
-      console.log('summary' in payload ? payload.summary : undefined);
+      setConversationSummary(
+        'summary' in payload && typeof payload.summary === 'string'
+          ? payload.summary
+          : '',
+      );
 
       const assistantId = `${Date.now()}-assistant`;
-      setMessages((prev) => [
-        ...prev,
-        { id: assistantId, sender: 'assistant', text: '' },
-      ]);
+      setMessages((prev) => [...prev, { id: assistantId, sender: 'assistant', text: '' }]);
 
       const responseModel =
         'model' in payload && typeof payload.model === 'string'
@@ -156,8 +226,9 @@ export default function ChatInterface() {
 
       setModel(responseModel);
       const responseUsage = 'usage' in payload ? payload.usage : undefined;
-      setUsage(isTokenUsage(responseUsage) ? responseUsage : null);
-      setSessionTotalTokens((prev) => prev + (usage?.total_tokens ?? 0));
+      const tokenUsage = isTokenUsage(responseUsage) ? responseUsage : null;
+      setUsage(tokenUsage);
+      setSessionTotalTokens(tokenUsage?.session_total_tokens ?? 0);
 
       setIsTyping(true);
       const chunkSize = 3;
@@ -212,7 +283,9 @@ export default function ChatInterface() {
       setInput('');
       setModel('Loading…');
       setUsage(null);
+      setConversationSummary('');
       setSessionTotalTokens(0);
+      setSessionId(crypto.randomUUID());
     } catch (error) {
       setRestartError(
         error instanceof Error ? error.message : 'The server could not be restarted.',
@@ -222,124 +295,299 @@ export default function ChatInterface() {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
       handleSend();
     }
   };
 
   return (
-    <div className="chat-app">
-      <header className="chat-header">
-        <div className="brand">
-          <div className="brand-mark" aria-hidden="true">
-            <img src={brainIcon} alt="" />
-          </div>
-          <div>
-            <p className="eyebrow">WEB SUMMARIZER</p>
-            <h1>AI Summarization Test Bench</h1>
-          </div>
-        </div>
-        <div className="header-actions">
-          <div className="model-badge" aria-label={`Active model: ${model}`}>
-            <span className="status-dot" aria-hidden="true" />
-            <span className="model-details">
-              <span className="model-label">ACTIVE MODEL</span>
-              <span className="model-name">{model}</span>
-            </span>
+    <div className={`chat-app${isSidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
+      <aside className="sidebar" aria-label="Workspace navigation">
+        <div className="sidebar-top">
+          <div className="brand">
+            <div className="brand-mark" aria-hidden="true">
+              <Icon name="message" />
+            </div>
+            <span className="brand-name">Sumarize</span>
           </div>
           <button
-            className="restart-button"
-            onClick={handleRestart}
-            disabled={isRestarting || isSending}
-            aria-label="Restart Python server"
+            className="icon-button sidebar-toggle"
+            onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
+            aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <path d="M16.2 7.2A6.5 6.5 0 1 0 16.4 11M16.2 3.8v3.8h-3.8" />
-            </svg>
-            <span>{isRestarting ? 'Restarting…' : 'Restart server'}</span>
+            <Icon name="collapse" />
           </button>
         </div>
-      </header>
-      {restartError && (
-        <div className="restart-error" role="alert">
-          Could not restart server: {restartError}
-        </div>
-      )}
 
-      <main className="chat-main">
-        <section className="conversation" aria-label="Conversation">
-          <div className="conversation-heading">
-            <p className="eyebrow">YOUR WORKSPACE</p>
-            <h2>Conversation</h2>
-            <p className="conversation-subtitle">Try out a prompt and see how your assistant responds.</p>
+        <button
+          className="new-chat-button"
+          onClick={handleNewConversation}
+          disabled={isSending || isRestarting}
+        >
+          <Icon name="plus" />
+          <span>New conversation</span>
+        </button>
+
+        <label className="search-box">
+          <Icon name="search" />
+          <input
+            type="search"
+            value={conversationSearch}
+            onChange={(event) => setConversationSearch(event.target.value)}
+            placeholder="Search conversations"
+            aria-label="Search current conversation"
+          />
+        </label>
+
+        <div className="recent-heading">
+          <span>Recent conversations</span>
+          <Icon name="chevron" />
+        </div>
+        <div className="recent-list">
+          {isConversationVisible && (
+            <div className="recent-item active" title={conversationTitle} aria-current="page">
+              <Icon name="message" />
+              <span className="recent-title">{conversationTitle}</span>
+              <span className="active-indicator" />
+            </div>
+          )}
+          {!isConversationVisible && (
+            <p className="empty-search">No matching conversation</p>
+          )}
+        </div>
+
+        <div className="sidebar-bottom">
+          <div className="workspace-status">
+            <span className="status-orb" />
+            <div>
+              <span className="status-label">Current session</span>
+              <span className="status-value">Token counts at a glance</span>
+            </div>
           </div>
+          <div className="profile-row">
+            <div className="profile-avatar">S</div>
+            <div className="profile-copy">
+              <span>Sumarize</span>
+              <small>Conversation workspace</small>
+            </div>
+            <Icon name="chevron" />
+          </div>
+        </div>
+      </aside>
+
+      <main className="workspace">
+        <header className="topbar">
+          <div className="project-heading">
+            <span className="breadcrumb">WORKSPACE <span>/</span> CONVERSATION</span>
+            <h1 title={conversationTitle}>{conversationTitle}</h1>
+          </div>
+          <div className="header-actions">
+            <div className="model-badge" aria-label={`Active model: ${model}`}>
+              <span className="status-dot" aria-hidden="true" />
+              <span className="model-details">
+                <span className="model-label">MODEL</span>
+                <span className="model-name">{model}</span>
+              </span>
+              <Icon name="chevron" />
+            </div>
+            <button
+              className="restart-button"
+              onClick={handleRestart}
+              disabled={isRestarting || isSending}
+              aria-label="Restart Python server"
+              title="Restart Python server"
+            >
+              <Icon name="refresh" />
+              <span>{isRestarting ? 'Restarting…' : 'Restart'}</span>
+            </button>
+          </div>
+        </header>
+
+        {restartError && (
+          <div className="restart-error" role="alert">
+            Could not restart server: {restartError}
+          </div>
+        )}
+
+        <section className="conversation" aria-label="Conversation">
+          <div className="conversation-intro">
+            <div>
+              <p className="eyebrow">YOUR CONVERSATION</p>
+              <h2>What are we <span>working on?</span></h2>
+              <p className="conversation-subtitle">
+                Paste something to summarize or start with a question.
+              </p>
+            </div>
+          </div>
+
+          {conversationSummary && (
+            <section className="conversation-summary" aria-live="polite">
+              <div className="summary-icon"><Icon name="message" /></div>
+              <div>
+                <p className="eyebrow">CONVERSATION SUMMARY</p>
+                <p>{conversationSummary}</p>
+              </div>
+            </section>
+          )}
+
           <div className="message-list" aria-live="polite">
-            {messages.map((msg) => (
-              <div key={msg.id} className={`message-row ${msg.sender}`}>
-                {msg.sender === 'assistant' && <div className="assistant-avatar" aria-hidden="true"><img src={brainIcon} alt="" /></div>}
-                <div className={`message-bubble ${msg.sender}`}>
-                  <div className="message-sender">{msg.sender === 'user' ? 'You' : 'Assistant'}</div>
-                  <p>{msg.text}</p>
+            {messages.map((message) => (
+              <div key={message.id} className={`message-row ${message.sender}`}>
+                {message.sender === 'assistant' && (
+                  <div className="assistant-avatar" aria-hidden="true">
+                    <Icon name="message" />
+                  </div>
+                )}
+                <div className={`message-bubble ${message.sender}`}>
+                  <div className="message-meta">
+                    <span>{message.sender === 'user' ? 'You' : 'Assistant'}</span>
+                  </div>
+                  <p>{renderMessageText(message.text)}</p>
                 </div>
               </div>
             ))}
             <div ref={latestMessageRef} />
           </div>
-          <div className="conversation-note">
-            <span className="note-icon" aria-hidden="true">✦</span>
-            Your messages are sent to the local Python server.
-          </div>
+
+          {messages.length === 1 && (
+            <div className="starter-prompts" aria-label="Suggested prompts">
+              <span className="starter-label">Try one of these</span>
+              <div className="starter-list">
+                {starterPrompts.map((prompt) => (
+                  <button key={prompt} onClick={() => setInput(prompt)}>
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
+
+        <footer className="composer-wrap">
+          <div className="composer">
+            <div className="composer-box">
+              <textarea
+                rows={2}
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                onKeyDown={handleKeyDown}
+                disabled={isRestarting}
+                placeholder="Write a message or paste text…"
+                aria-label="Message your assistant"
+              />
+              <div className="composer-controls">
+                <span className="composer-hint">Shift + Enter for a new line</span>
+                <button
+                  onClick={handleSend}
+                  disabled={!input.trim() || isSending || isRestarting}
+                  aria-label="Send message"
+                  title="Send message"
+                >
+                  <Icon name="send" />
+                </button>
+              </div>
+            </div>
+            {requestError && <p className="request-error" role="alert">{requestError}</p>}
+            <div className="composer-footer">
+              <span><span className="footer-status-dot" /> Model: {model}</span>
+              <span>
+                {isTyping
+                  ? 'Writing response…'
+                  : isSending
+                    ? 'Contacting Python server…'
+                    : usage
+                      ? `This reply · ${formatTokens(usage.total_tokens ?? 0)} tokens`
+                      : 'Ready when you are'}
+              </span>
+            </div>
+          </div>
+        </footer>
       </main>
 
-      <footer className="composer-wrap">
-        <div className="composer">
-          <div className="composer-box">
-            <textarea
-              rows={2}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              disabled={isRestarting}
-              placeholder="Message your assistant..."
-              aria-label="Message your assistant"
-            />
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || isSending || isRestarting}
-              aria-label="Send message"
-              title="Send message"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-                aria-hidden="true"
-              >
-                <path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925A1.5 1.5 0 005.135 9.25h6.115a.75.75 0 010 1.5H5.135a1.5 1.5 0 00-1.442 1.086l-1.414 4.926a.75.75 0 00.826.95 28.896 28.896 0 0015.293-7.154.75.75 0 000-1.115A28.897 28.897 0 003.105 2.289z" />
-              </svg>
-            </button>
+      <aside className="insights-rail" aria-label="Conversation insights">
+        <div className="insights-header">
+          <div className="insights-title">
+            <span className="insights-icon"><Icon name="chart" /></span>
+            <span>Token usage</span>
           </div>
-          {requestError && <p className="request-error" role="alert">{requestError}</p>}
-          <div className="composer-hint">
-            <span>Enter to send <span className="hint-divider">·</span> Shift + Enter for a new line</span>
-            <span>
-              {isTyping
-                ? 'Writing response…'
-                : isSending
-                  ? 'Contacting Python server…'
-                  : 'Python API · /api/chat'}
-            </span>
-          </div>
-          <div className="token-usage" aria-live="polite">
-            {usage
-              ? `Turn (reply + summary): ${usage.input_tokens ?? '—'} in / ${usage.output_tokens ?? '—'} out (${sessionTotalTokens ?? '—'} total) · Session: ${usage.session_total_tokens} tokens, Summary: ${usage.session_input_tokens} in / ${usage.session_output_tokens} out`
-              : 'Token usage will appear after the first reply.'}
-          </div>
+          <span className="live-label">SESSION</span>
         </div>
-      </footer>
+
+        <section className="stats-card token-card">
+          <div className="card-overline">THIS SESSION</div>
+          <div className="total-token-value">{formatTokens(sessionTotalTokens)}</div>
+          <div className="token-caption">
+            {usage ? 'Tokens used so far' : 'No replies yet'}
+          </div>
+          <div className="token-breakdown">
+            <div className="token-breakdown-item">
+              <span className="token-key"><span className="token-dot input-dot" />Input</span>
+              <strong>{formatTokens(sessionInputTokens)}</strong>
+            </div>
+            <div className="token-breakdown-item">
+              <span className="token-key"><span className="token-dot output-dot" />Output</span>
+              <strong>{formatTokens(sessionOutputTokens)}</strong>
+            </div>
+          </div>
+          <div
+            className="token-comparison"
+            role="img"
+            aria-label={`${Math.round(inputShare)} percent input tokens and ${Math.round(100 - inputShare)} percent output tokens`}
+          >
+            <span style={{ width: `${inputShare}%` }} />
+            <span style={{ width: `${100 - inputShare}%` }} />
+          </div>
+        </section>
+
+        <section className="stats-card saved-card">
+          <div className="saved-card-heading">
+            <span className="saved-icon"><Icon name="message" /></span>
+            <span>Summary</span>
+          </div>
+          <div className={`summary-state${conversationSummary ? ' is-ready' : ''}`}>
+            <span className="summary-state-dot"><Icon name={conversationSummary ? 'check' : 'message'} /></span>
+            <span>{conversationSummary ? 'Ready' : 'Not started'}</span>
+          </div>
+          <p>
+            {conversationSummary
+              ? 'Key details from this conversation.'
+              : 'A summary appears as the conversation grows.'}
+          </p>
+          {conversationSummary && <div className="summary-preview">{conversationSummary}</div>}
+        </section>
+
+        <section className="stats-card response-card">
+          <div className="response-card-heading">
+            <span className="response-icon"><Icon name="message" /></span>
+            <span>Most recent reply</span>
+          </div>
+          <div className="response-stat">
+            <span>Input</span>
+            <strong>{usage?.input_tokens == null ? '—' : formatTokens(usage.input_tokens)}</strong>
+          </div>
+          <div className="response-stat">
+            <span>Output</span>
+            <strong>{usage?.output_tokens == null ? '—' : formatTokens(usage.output_tokens)}</strong>
+          </div>
+          <div className="response-footnote">
+            <Icon name="check" />
+            {usage ? 'Tokens reported by the model' : 'Waiting for first response'}
+          </div>
+        </section>
+
+        <div className="insights-footer">
+          <span className="footer-check"><Icon name="check" /></span>
+          <span>Counts update after each reply</span>
+        </div>
+      </aside>
+
+      <div className="compact-token-pill" aria-live="polite">
+        <Icon name="chart" />
+        {formatTokens(sessionTotalTokens)} tokens
+      </div>
     </div>
   );
-};
+}
