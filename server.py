@@ -12,7 +12,6 @@ from groq import Groq
 from groq.types.chat import ChatCompletionMessageParam
 from dotenv import load_dotenv
 import uuid
-import tiktoken
 import re
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException
@@ -22,11 +21,10 @@ from pydantic import BaseModel
 load_dotenv(Path(__file__).resolve().with_name(".env"), override=True)
 client = Groq()
 
-encoder = tiktoken.get_encoding("cl100k_base")
 MODEL = "openai/gpt-oss-20b"
 
 def count_tokens(text: str) -> int:
-    return len(encoder.encode(text))
+    return len(text) // 4  # Rough estimate: 1 token ≈ 4 characters
 
 
 SUMMARY_TOKEN_THRESHOLD = 3000
