@@ -78,13 +78,155 @@ function isTokenUsage(value: unknown): value is TokenUsage {
   );
 }
 
-function renderMessageText(text: string): React.ReactNode[] {
-  return text.split(/(\*\*[\s\S]+?\*\*)/g).map((part, index) => {
-    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
-      return <strong key={index}>{part.slice(2, -2)}</strong>;
+function renderInlineMarkdown(text: string): React.ReactNode[] {
+  const matches = Array.from(text.matchAll(/(\*\*.*?\*\*|__.*?__|\*.*?\*|_.*?_\b|`.*?`|\[.*?\]\(.*?\)|~~.*?~~)/g));
+
+  if (!matches.length) {
+    return [text];
+  }
+
+  const nodes: React.ReactNode[] = [];
+  let lastIndex = 0;
+
+  matches.forEach((match) => {
+    const matchText = match[0];
+    const start = match.index ?? 0;
+
+    if (start > lastIndex) {
+      nodes.push(text.slice(lastIndex, start));
     }
 
-    return part;
+    if (matchText.startsWith('**') && matchText.endsWith('**')) {
+      nodes.push(<strong key={`${matchText}-${start}`}>{matchText.slice(2, -2)}</strong>);
+    } else if (matchText.startsWith('__') && matchText.endsWith('__')) {
+      nodes.push(<strong key={`${matchText}-${start}`}>{matchText.slice(2, -2)}</strong>);
+    } else if (matchText.startsWith('[') && matchText.includes('](') && matchText.endsWith(')')) {
+      const end = matchText.lastIndexOf('](');
+      const label = matchText.slice(1, end);
+      const href = matchText.slice(end + 2, -1);
+      nodes.push(
+        <a key={`${matchText}-${start}`} href={href} target="_blank" rel="noreferrer noopener">
+          {label}
+        </a>,
+      );
+    } else if (matchText.startsWith('~~') && matchText.endsWith('~~')) {
+      nodes.push(<del key={`${matchText}-${start}`}>{matchText.slice(2, -2)}</del>);
+    } else if (matchText.startsWith('`') && matchText.endsWith('`')) {
+      nodes.push(<code key={`${matchText}-${start}`}>{matchText.slice(1, -1)}</code>);
+    } else if ((matchText.startsWith('*') || matchText.startsWith('_')) && matchText.endsWith(matchText[0])) {
+      nodes.push(<em key={`${matchText}-${start}`}>{matchText.slice(1, -1)}</em>);
+    } else {
+      nodes.push(matchText);
+    }
+
+    lastIndex = start + matchText.length;
+  });
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return nodes;
+}
+
+function renderMarkdownText(text: string): React.ReactNode[] {
+  const normalized = text.replace(/\r\n/g, '\n').trim();
+  if (!normalized) {
+    return [];
+  }
+
+  const blocks = normalized.split(/\n{2,}/).filter((block) => block.trim());
+
+  return blocks.flatMap((block, blockIndex) => {
+    const lines = block.split('\n').map((line) => line.trimEnd());
+    const trimmed = lines.map((line) => line.trim());
+
+    if (trimmed.every((line) => /^\|.*\|$/.test(line))) {
+      const rows = trimmed.map((line) => line.split('|').slice(1, -1).map((cell) => cell.trim()));
+      const [header, ...bodyRows] = rows;
+      const separator = bodyRows[0] ?? [];
+      const isTable =
+        header.length > 0 &&
+        separator.length === header.length &&
+        separator.every((cell) => /^:?-{3,}:?$/.test(cell));
+
+      if (isTable) {
+        const tableBody = bodyRows.slice(1).map((row, rowIndex) => (
+          <tr key={`row-${rowIndex}`}>
+            {row.map((cell, cellIndex) => (
+              <td key={`${rowIndex}-${cellIndex}`}>{renderInlineMarkdown(cell)}</td>
+            ))}
+          </tr>
+        ));
+
+        return [
+          <table key={`table-${blockIndex}`} className="markdown-table">
+            <thead>
+              <tr>
+                {header.map((cell, cellIndex) => (
+                  <th key={`header-${cellIndex}`}>{renderInlineMarkdown(cell)}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>{tableBody}</tbody>
+          </table>,
+        ];
+      }
+    }
+
+    if (trimmed.every((line) => /^#{1,6}\s+.+$/.test(line))) {
+      const heading = trimmed[0];
+      const level = (heading.match(/^#+/)?.[0] ?? '#').length;
+      const content = heading.replace(/^#{1,6}\s+/, '');
+      return [
+        React.createElement(`h${Math.min(level, 6)}`, { key: `heading-${blockIndex}` }, renderInlineMarkdown(content)),
+      ];
+    }
+
+    if (trimmed.every((line) => /^[-*+]\s+.+$/.test(line))) {
+      return [
+        <ul key={`list-${blockIndex}`}>
+          {trimmed.map((line, index) => (
+            <li key={`${blockIndex}-${index}`}>{renderInlineMarkdown(line.replace(/^[-*+]\s+/, ''))}</li>
+          ))}
+        </ul>,
+      ];
+    }
+
+    if (trimmed.every((line) => /^\d+\.\s+.+$/.test(line))) {
+      return [
+        <ol key={`ordered-list-${blockIndex}`}>
+          {trimmed.map((line, index) => (
+            <li key={`${blockIndex}-${index}`}>{renderInlineMarkdown(line.replace(/^\d+\.\s+/, ''))}</li>
+          ))}
+        </ol>,
+      ];
+    }
+
+    if (trimmed.length === 1 && /^---+$/.test(trimmed[0])) {
+      return [<hr key={`hr-${blockIndex}`} />];
+    }
+
+    if (trimmed.length === 1 && /^>\s*.+$/.test(trimmed[0])) {
+      return [
+        <blockquote key={`quote-${blockIndex}`}>
+          {renderInlineMarkdown(trimmed[0].replace(/^>\s*/, ''))}
+        </blockquote>,
+      ];
+    }
+
+    if (trimmed.length === 1 && /^```/.test(trimmed[0])) {
+      const codeLines = lines.slice(1, -1);
+      return [
+        <pre key={`code-${blockIndex}`}>
+          <code>{codeLines.join('\n')}</code>
+        </pre>,
+      ];
+    }
+
+    return [
+      <p key={`paragraph-${blockIndex}`}>{renderInlineMarkdown(lines.join(' '))}</p>,
+    ];
   });
 }
 
@@ -428,7 +570,7 @@ export default function ChatInterface() {
               <div className="summary-icon"><Icon name="message" /></div>
               <div>
                 <p className="eyebrow">CONVERSATION SUMMARY</p>
-                <p>{conversationSummary}</p>
+                <div className="markdown-content">{renderMarkdownText(conversationSummary)}</div>
               </div>
             </section>
           )}
@@ -445,7 +587,7 @@ export default function ChatInterface() {
                   <div className="message-meta">
                     <span>{message.sender === 'user' ? 'You' : 'Assistant'}</span>
                   </div>
-                  <p>{renderMessageText(message.text)}</p>
+                  <div className="markdown-content">{renderMarkdownText(message.text)}</div>
                 </div>
               </div>
             ))}

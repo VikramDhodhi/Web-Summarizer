@@ -764,6 +764,116 @@
   font-weight: 700;
 }
 
+.markdown-content {
+  color: #e6e0f2;
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.markdown-content > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-content > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown-content p,
+.markdown-content ul,
+.markdown-content ol,
+.markdown-content blockquote,
+.markdown-content pre,
+.markdown-content table,
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6,
+.markdown-content hr {
+  margin: 0 0 0.7em;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3,
+.markdown-content h4,
+.markdown-content h5,
+.markdown-content h6 {
+  color: #fff;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.markdown-content h1 { font-size: 1.8em; }
+.markdown-content h2 { font-size: 1.5em; }
+.markdown-content h3 { font-size: 1.2em; }
+.markdown-content h4 { font-size: 1.05em; }
+.markdown-content h5,
+.markdown-content h6 { font-size: 1em; }
+
+.markdown-content ul,
+.markdown-content ol {
+  padding-left: 1.3em;
+}
+
+.markdown-content li + li {
+  margin-top: 0.2em;
+}
+
+.markdown-content a {
+  color: #d7b8ff;
+  text-decoration: underline;
+}
+
+.markdown-content code {
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 0.92em;
+}
+
+.markdown-content pre {
+  overflow-x: auto;
+  padding: 0.85em 0.9em;
+  border: 1px solid rgba(184, 142, 255, 0.2);
+  border-radius: 9px;
+  background: rgba(13, 10, 28, 0.7);
+}
+
+.markdown-content pre code {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.markdown-content hr {
+  border: 0;
+  border-top: 1px solid rgba(185, 138, 255, 0.22);
+}
+
+.markdown-content table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.markdown-content th,
+.markdown-content td {
+  padding: 0.5em 0.6em;
+  border: 1px solid rgba(185, 138, 255, 0.18);
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-content blockquote {
+  margin-left: 0;
+  padding-left: 0.8em;
+  border-left: 2px solid rgba(180, 138, 255, 0.6);
+  color: #d8d2ec;
+}
+
 .starter-prompts {
   margin: 22px 0 5px 42px;
 }

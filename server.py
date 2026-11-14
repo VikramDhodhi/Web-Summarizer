@@ -63,9 +63,10 @@ def restart_server():
     os.execv(sys.executable, [sys.executable, *sys.argv])
 
 def clean_whitespace(text: str) -> str:
-    # Collapse multiple spaces/tabs into a single space, and multiple blank lines into one newline
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[ \t]+", " ", text)
-    text = re.sub(r"\n\s*\n+", "\n", text)
+    text = re.sub(r" *\n *", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
 
